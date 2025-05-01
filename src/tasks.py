@@ -41,26 +41,33 @@ TASK_METADATA = {
             "type": "textarea",
             "required": False,
         },
-        {
-            "name": "Yara sources",
-            "label": "Select systems to fetch Yara from",
-            "description": "Available systems: yeti",
-            "type": "text",
-            "required": False,
-        },
-        {
-            "name": "Yara rule name filter",
-            "label": "Filter rules by name",
-            "description": "Filter to apply on rules to obtain from the TIP",
-            "type": "text",
-            "required": False,
-        },
     ],
 }
 
-AVAILABLE_PROVIDERS = {
-    "yeti": yeti.YetiIntelProvider,
-}
+AVAILABLE_PROVIDERS = {}
+if os.environ.get("YETI_PROVIDER"):
+    AVAILABLE_PROVIDERS["yeti"] = yeti.YetiIntelProvider
+
+# Only add the Yara sources field if there are available providers
+if AVAILABLE_PROVIDERS:
+    TASK_METADATA["task_config"].extend(
+        [
+            {
+                "name": "Yara sources",
+                "label": "Select systems to fetch Yara from",
+                "description": f"Available systems: {', '.join(AVAILABLE_PROVIDERS.keys())}",
+                "type": "text",
+                "required": False,
+            },
+            {
+                "name": "Yara rule name filter",
+                "label": "Filter rules by name",
+                "description": "Filter to apply on rules to obtain from the TIP",
+                "type": "text",
+                "required": False,
+            },
+        ]
+    )
 
 
 @dataclass
@@ -121,19 +128,19 @@ def command(
     """
     output_files = []
 
-    providers = []
-    for provider_key in task_config.get("Yara sources").split(","):
-        provider_class = AVAILABLE_PROVIDERS.get(provider_key, None)
-        providers.append(provider_class())
-
     all_patterns = ""
-    for provider in providers:
-        all_patterns += provider.get_yara_rules(
-            name_filter=task_config.get("Yara rule name filter", "")
-        )
-        logger.info(
-            f"Obtained {len(all_patterns)} bytes of Yara rules from {provider.NAME}"
-        )
+
+    if AVAILABLE_PROVIDERS:
+        providers = []
+        for provider_key in task_config.get("Yara sources").split(","):
+            provider_class = AVAILABLE_PROVIDERS.get(provider_key, None)
+            providers.append(provider_class())
+
+        for provider in providers:
+            all_patterns += provider.get_yara_rules(
+                name_filter=task_config.get("Yara rule name filter", "")
+            )
+            logger.info(f"Obtained {len(all_patterns)} bytes of Yara rules from {provider.NAME}")
 
     manual_yara = task_config.get("Manual Yara rules", "")
     if manual_yara:
